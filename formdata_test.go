@@ -41,7 +41,7 @@ type Project struct {
 
 func post(w http.ResponseWriter, r *http.Request) {
 	var a *Person
-	Unmarshal(r, &a, "Person")
+	UnmarshalByPrefix(r, &a, "Person")
 	body, _ := json.Marshal(&a)
 	if len(a.Projects) != 2 {
 		panic(string(body))
@@ -49,9 +49,16 @@ func post(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, string(body))
 }
 
+func postwithnames(w http.ResponseWriter, r *http.Request) {
+	var a *Person
+	UnmarshalByNames(r, &a, []string{"Name", "Gender", "Company.Name"})
+	body, _ := json.Marshal(&a)
+	fmt.Fprint(w, string(body))
+}
+
 func postmultipart(w http.ResponseWriter, r *http.Request) {
 	var a *Person
-	Unmarshal(r, &a, "Person")
+	UnmarshalByPrefix(r, &a, "Person")
 	f1, _ := a.Photo.Open()
 	f2, _ := a.Resume.Open()
 
@@ -62,7 +69,7 @@ func postmultipart(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestParseForm(t *testing.T) {
-	http.HandleFunc("/post", post)
+	http.HandleFunc("/postform", post)
 	ts := httptest.NewServer(http.DefaultServeMux)
 	defer ts.Close()
 
@@ -79,7 +86,7 @@ func TestParseForm(t *testing.T) {
 	data.Add("Person.Projects[0].Members[1].Name", "Juice")
 	data.Add("Person.Projects[0].Members[2].Name", "Felix")
 
-	res, err := http.PostForm(ts.URL+"/post", data)
+	res, err := http.PostForm(ts.URL+"/postform", data)
 	if err != nil {
 		panic(err)
 	}
@@ -94,12 +101,39 @@ func TestParseForm(t *testing.T) {
 	}
 }
 
-func TestMultipartParseForm(t *testing.T) {
-	http.HandleFunc("/post", postmultipart)
+func TestParseFormByNames(t *testing.T) {
+	http.HandleFunc("/postwithnames", postwithnames)
 	ts := httptest.NewServer(http.DefaultServeMux)
 	defer ts.Close()
 
-	req, _ := http.NewRequest("POST", ts.URL+"/post", strings.NewReader(multipartContent))
+	data := url.Values{}
+	data.Add("Name", "Felix")
+	data.Add("Gender", "1")
+	data.Add("Company.Name", "The Plant")
+	data.Add("Phones.Home", "12121212")
+	data.Add("Phones.Company", "12332232")
+
+	res, err := http.PostForm(ts.URL+"/postwithnames", data)
+	if err != nil {
+		panic(err)
+	}
+	b, _ := ioutil.ReadAll(res.Body)
+	var p *Person
+	json.Unmarshal(b, &p)
+	if p == nil || p.Name != "Felix" {
+		t.Errorf("%+v", string(b))
+	}
+	if len(p.Phones) != 0 {
+		t.Errorf("%+v", string(b))
+	}
+}
+
+func TestMultipartParseForm(t *testing.T) {
+	http.HandleFunc("/postmultipart", postmultipart)
+	ts := httptest.NewServer(http.DefaultServeMux)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/postmultipart", strings.NewReader(multipartContent))
 	req.Header.Set("Content-Type", "multipart/form-data; boundary=----WebKitFormBoundarySHaDkk90eMKgsVUj")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {

@@ -6,8 +6,42 @@ import (
 	"strings"
 )
 
-func Unmarshal(r *http.Request, v interface{}, prefix string) (err error) {
+func UnmarshalByNames(r *http.Request, v interface{}, names []string) (err error) {
+	f := func(key string) (r string, skip bool) {
+		skip = true
+		for _, n := range names {
+			if n == key {
+				skip = false
+				break
+			}
+		}
+		r = key
+		return
+	}
+	UnmarshalFunc(r, v, f)
+	return
+}
 
+func UnmarshalByPrefix(r *http.Request, v interface{}, prefix string) (err error) {
+	f := func(key string) (stripped string, skip bool) {
+		if prefix == "" {
+			stripped = key
+			skip = false
+			return
+		}
+		if strings.Index(key, prefix) != 0 {
+			skip = true
+			return
+		}
+		stripped = key[len(prefix):]
+		skip = false
+		return
+	}
+	UnmarshalFunc(r, v, f)
+	return
+}
+
+func UnmarshalFunc(r *http.Request, v interface{}, f func(key string) (string, bool)) (err error) {
 	if r.Form == nil && r.MultipartForm == nil {
 		r.ParseMultipartForm(32 << 20)
 	}
@@ -20,7 +54,7 @@ func Unmarshal(r *http.Request, v interface{}, prefix string) (err error) {
 	}
 
 	for fk, fv := range vals {
-		key, skip := skipOrTrim(prefix, fk)
+		key, skip := f(fk)
 		if skip {
 			continue
 		}
@@ -32,7 +66,7 @@ func Unmarshal(r *http.Request, v interface{}, prefix string) (err error) {
 	if r.MultipartForm != nil {
 
 		for filek, filev := range r.MultipartForm.File {
-			key, skip := skipOrTrim(prefix, filek)
+			key, skip := f(filek)
 			if skip {
 				continue
 			}
@@ -43,20 +77,5 @@ func Unmarshal(r *http.Request, v interface{}, prefix string) (err error) {
 		return
 	}
 
-	return
-}
-
-func skipOrTrim(prefix string, key string) (stripped string, skip bool) {
-	if prefix == "" {
-		stripped = key
-		skip = false
-		return
-	}
-	if strings.Index(key, prefix) != 0 {
-		skip = true
-		return
-	}
-	stripped = key[len(prefix):]
-	skip = false
 	return
 }
